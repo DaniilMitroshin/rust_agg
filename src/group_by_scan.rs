@@ -6,9 +6,9 @@ use crate::group_value::GroupValue;
 
 pub struct GroupByScan {
 
-    results: Vec<(GroupValue,Vec<i32>)>,
+    results: Vec<BTreeMap<String, String>>,
 
-    groupfield: String,
+    headers: Vec<String>,
 
     index: usize
 
@@ -18,11 +18,11 @@ impl GroupByScan {
 
     pub fn new(
         scan: &mut dyn Scan,
-        groupfield: String,
-        aggfield: String
+        groupfields: Vec<String>,
+        aggfields: Vec<String>
     ) -> Self {
 
-        let mut groups: BTreeMap<GroupValue, Vec<i32>> = BTreeMap::new();
+        let mut groups: BTreeMap<GroupValue, BTreeMap<String, Vec<i32>>> = BTreeMap::new();
 
         scan.before_first();
 
@@ -30,30 +30,68 @@ impl GroupByScan {
 
             let mut key = GroupValue::new();
 
-            key.add(groupfield.clone(), scan.get_string(&groupfield));
+            for groupfield in &groupfields {
+                key.add(groupfield.clone(), scan.get_string(groupfield));
+            }
 
-            let val = scan.get_int(&aggfield);
+            let entry = groups.entry(key).or_default();
 
-            groups
-                .entry(key)
-                .or_default()
-                .push(val);
+            for aggfield in &aggfields {
+                let val = scan.get_int(aggfield);
+                entry.entry(aggfield.clone()).or_default().push(val);
+            }
 
         }
 
         let mut results = Vec::new();
+        let mut headers = groupfields.clone();
 
-        for (k,v) in &groups {
-            let aggregated = run_aggregations(v, &aggfield);
+        for aggfield in &aggfields {
+            headers.push(format!("sum_{aggfield}"));
+            headers.push(format!("min_{aggfield}"));
+            headers.push(format!("max_{aggfield}"));
+        }
 
-            results.push((
-                k.clone(),
-                vec![
-                    *aggregated.get(&format!("sum_{aggfield}")).unwrap_or(&0),
-                    *aggregated.get(&format!("min_{aggfield}")).unwrap_or(&0),
-                    *aggregated.get(&format!("max_{aggfield}")).unwrap_or(&0),
-                ],
-            ));
+        for (group_value, grouped_fields) in &groups {
+            let mut row = BTreeMap::new();
+
+            for groupfield in &groupfields {
+                row.insert(
+                    groupfield.clone(),
+                    group_value.get(groupfield).unwrap_or("").to_string(),
+                );
+            }
+
+            for aggfield in &aggfields {
+                let aggregated = grouped_fields
+                    .get(aggfield)
+                    .map(|values| run_aggregations(values, aggfield))
+                    .unwrap_or_default();
+
+                row.insert(
+                    format!("sum_{aggfield}"),
+                    aggregated
+                        .get(&format!("sum_{aggfield}"))
+                        .unwrap_or(&0)
+                        .to_string(),
+                );
+                row.insert(
+                    format!("min_{aggfield}"),
+                    aggregated
+                        .get(&format!("min_{aggfield}"))
+                        .unwrap_or(&0)
+                        .to_string(),
+                );
+                row.insert(
+                    format!("max_{aggfield}"),
+                    aggregated
+                        .get(&format!("max_{aggfield}"))
+                        .unwrap_or(&0)
+                        .to_string(),
+                );
+            }
+
+            results.push(row);
 
         }
 
@@ -61,7 +99,7 @@ impl GroupByScan {
 
             results,
 
-            groupfield,
+            headers,
 
             index: 0
 
@@ -91,29 +129,18 @@ impl GroupByScan {
 
     }
 
-    pub fn get_group(&self) -> String {
+    pub fn headers(&self) -> &[String] {
 
-        let current_group = &self.results[self.index - 1].0;
-
-        current_group.get(&self.groupfield).unwrap_or("").to_string()
+        &self.headers
 
     }
 
-    pub fn get_sum(&self) -> i32 {
+    pub fn get_value(&self, fldname: &str) -> String {
 
-        self.results[self.index-1].1[0]
-
-    }
-
-    pub fn get_min(&self) -> i32 {
-
-        self.results[self.index-1].1[1]
-
-    }
-
-    pub fn get_max(&self) -> i32 {
-
-        self.results[self.index-1].1[2]
+        self.results[self.index - 1]
+            .get(fldname)
+            .cloned()
+            .unwrap_or_default()
 
     }
 

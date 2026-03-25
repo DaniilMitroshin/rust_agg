@@ -43,19 +43,22 @@ impl Scan for RecordScan {
 
     fn get_int(&self, fldname: &str) -> i32 {
 
-        match fldname {
-            "salary" => self.data[self.index as usize].salary,
-            _ => panic!("Field {fldname} is not an integer field"),
-        }
+        let value = self.data[self.index as usize]
+            .get(fldname)
+            .unwrap_or_else(|| panic!("Unknown field: {fldname}"));
+
+        value
+            .parse::<i32>()
+            .unwrap_or_else(|_| panic!("Field {fldname} is not an integer field"))
 
     }
 
     fn get_string(&self, fldname: &str) -> String {
 
-        match fldname {
-            "dept" => self.data[self.index as usize].dept.clone(),
-            _ => panic!("Field {fldname} is not a string field"),
-        }
+        self.data[self.index as usize]
+            .get(fldname)
+            .unwrap_or_else(|| panic!("Unknown field: {fldname}"))
+            .to_string()
 
     }
 

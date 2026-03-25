@@ -1,7 +1,6 @@
-dept,salary
-IT,1000
-HR,800
-IT,1200
-HR,700
-IT,900
-managment,10
+dept,city,salary,bonus
+IT,Moscow,1000,100
+HR,Moscow,800,80
+IT,SPb,1200,120
+HR,Moscow,700,70
+IT,Moscow,900,90
